@@ -14,7 +14,8 @@ _numHiddenFeatures = 1024
 _numHiddenLayers = 1
 _numInputs = _imageSize * _imageSize
 _learningRate = 0.05
-_numSteps = 3001
+_numSteps = 10001
+_regularizationRate = 0.005
 
 def accuracy(predictions, labels):
     return (100.0 * np.sum(np.argmax(predictions, 1) == np.argmax(labels, 1))/predictions.shape[0])
@@ -66,6 +67,23 @@ def generateBiases(numHiddenLayers, numHiddenFeatures, numLabels):
     biases['out'] = tf.Variable(tf.zeros([numLabels]))
     return biases
 
+def generateRegularizers(weights, biases, numHiddenLayers):
+    validateNumHiddenLayers(numHiddenLayers)
+    regularizers = tf.nn.l2_loss(weights['h1']) + tf.nn.l2_loss(biases['h1'])
+
+    for layerNum in xrange(numHiddenLayers+1):
+        if layerNum > 1:
+            regularizers = regularizers + tf.nn.l2_loss(weights['h' + str(layerNum)]) + tf.nn.l2_loss(biases['h' + str(layerNum)])
+
+    regularizers = regularizers + tf.nn.l2_loss(weights['out']) + tf.nn.l2_loss(biases['out'])
+    return regularizers
+
+def generateLossCalc(weights, biases, numHiddenLayers, trainingNetwork, trainingLabels, regularizationRate):
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(trainingNetwork, trainingLabels))
+    regularizers = generateRegularizers(weights, biases, numHiddenLayers)
+    loss += regularizationRate * regularizers
+    return loss
+
 with open(pickle_file, 'rb') as f:
     save = pickle.load(f)
     train_dataset = save['train_dataset']
@@ -102,7 +120,7 @@ with graph.as_default():
     weights = generateWeights(_numHiddenLayers, _numHiddenFeatures, _numInputs, _numLabels)
     biases = generateBiases(_numHiddenLayers, _numHiddenFeatures, _numLabels)
     trainingNetwork = multilayerNetwork(tf_train_dataset, weights, biases, _numHiddenLayers)
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(trainingNetwork, tf_train_labels))
+    loss = generateLossCalc(weights, biases, _numHiddenLayers, trainingNetwork, tf_train_labels, _regularizationRate)
     optimizer = tf.train.GradientDescentOptimizer(_learningRate).minimize(loss)
 
     train_prediction = tf.nn.softmax(trainingNetwork)
