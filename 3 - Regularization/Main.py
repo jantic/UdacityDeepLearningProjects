@@ -10,11 +10,11 @@ _imageSize = 28
 _numLabels = 10
 _trainSubset = 60000
 _batchSize = 128
-_hiddenLayers = [1024]
+_hiddenLayers = [1024,128]
 _numInputs = _imageSize * _imageSize
-_learningRate = 0.04
+_learningRate = 0.00005
 _numSteps = 10000
-_regularizationRate = 0.005
+_regularizationRate = 0.0005
 _dropoutKeepRate = 0.5
 
 def accuracy(predictions, labels):
@@ -62,8 +62,9 @@ def generateWeights(hiddenLayers, numInputs, numLabels):
 
     for layerNum in xrange(numHiddenLayers+1):
         if layerNum > 1:
+            previousNumHiddenFeatures = numHiddenFeatures
             numHiddenFeatures = hiddenLayers[layerNum-1]
-            weights[generateHiddenLayerKey(layerNum)] = tf.Variable(tf.truncated_normal([numHiddenFeatures, numHiddenFeatures]))
+            weights[generateHiddenLayerKey(layerNum)] = tf.Variable(tf.truncated_normal([previousNumHiddenFeatures, numHiddenFeatures]))
 
     weights['out'] = tf.Variable(tf.truncated_normal([numHiddenFeatures, numLabels]))
     return weights
