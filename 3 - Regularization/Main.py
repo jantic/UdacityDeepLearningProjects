@@ -1,5 +1,5 @@
-# These are all the modules we'll be using later. Make sure you can import them
-# before proceeding further.
+#Best score so far:  93.3%
+
 import cPickle as pickle
 import numpy as np
 import tensorflow as tf
@@ -8,14 +8,14 @@ pickle_file = '/home/citnaj/Desktop/tensorflow/tensorflow/tensorflow/examples/ud
 
 _imageSize = 28
 _numLabels = 10
-_trainSubset = 60000
+_trainSubset = 10000
 _batchSize = 128
-_hiddenLayers = [1024,128]
+_hiddenLayers = [2048]
 _numInputs = _imageSize * _imageSize
-_learningRate = 0.00005
+_learningRate = 0.04
 _numSteps = 10000
-_regularizationRate = 0.0005
-_dropoutKeepRate = 0.5
+_regularizationRate = 0.005
+_dropoutKeepRate = 1
 
 def accuracy(predictions, labels):
     return (100.0 * np.sum(np.argmax(predictions, 1) == np.argmax(labels, 1))/predictions.shape[0])
@@ -29,10 +29,14 @@ def generateHiddenLayerKey(layerNum):
 
 def generateHiddenLayer(layerNum, previousLayer, weights, biases, training):
     key = generateHiddenLayerKey(layerNum)
-    hiddenLayer = tf.nn.relu(tf.matmul(previousLayer, weights[key]) + biases[key])
     if training:
-        hiddenLayer = tf.nn.dropout(hiddenLayer, _dropoutKeepRate)
-    return hiddenLayer
+        hiddenLayer = tf.nn.dropout(previousLayer, _dropoutKeepRate)
+        hiddenLayer = tf.nn.relu(tf.matmul(hiddenLayer, weights[key]) + biases[key])
+        return hiddenLayer
+    else:
+        hiddenLayer = tf.nn.relu(tf.matmul(previousLayer, weights[key]) + biases[key])
+        return hiddenLayer
+
 
 def multilayerNetwork(inputs, weights, biases, numHiddenLayers, training):
     validateNumHiddenLayers(numHiddenLayers)
