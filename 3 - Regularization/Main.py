@@ -8,14 +8,14 @@ pickle_file = '/home/citnaj/Desktop/tensorflow/tensorflow/tensorflow/examples/ud
 
 _imageSize = 28
 _numLabels = 10
-_trainSubset = 10000
+_trainSubset = 60000
 _batchSize = 128
-_numHiddenFeatures = 1024
-_numHiddenLayers = 1
+_hiddenLayers = [1024]
 _numInputs = _imageSize * _imageSize
-_learningRate = 0.05
-_numSteps = 10001
+_learningRate = 0.04
+_numSteps = 10000
 _regularizationRate = 0.005
+_dropoutKeepRate = 0.5
 
 def accuracy(predictions, labels):
     return (100.0 * np.sum(np.argmax(predictions, 1) == np.argmax(labels, 1))/predictions.shape[0])
@@ -24,18 +24,26 @@ def validateNumHiddenLayers(numHiddenLayers):
     if numHiddenLayers < 1:
         raise ValueError('Number of hidden layers must be >= 1')
 
-def multilayerNetwork(inputs, weights, biases, numHiddenLayers):
+def generateHiddenLayerKey(layerNum):
+    return 'h' + str(layerNum)
+
+def generateHiddenLayer(layerNum, previousLayer, weights, biases, training):
+    key = generateHiddenLayerKey(layerNum)
+    hiddenLayer = tf.nn.relu(tf.matmul(previousLayer, weights[key]) + biases[key])
+    if training:
+        hiddenLayer = tf.nn.dropout(hiddenLayer, _dropoutKeepRate)
+    return hiddenLayer
+
+def multilayerNetwork(inputs, weights, biases, numHiddenLayers, training):
     validateNumHiddenLayers(numHiddenLayers)
 
-    hiddenLayer = tf.nn.relu(tf.matmul(inputs, weights['h1']) + biases['h1'])
+    hiddenLayer = generateHiddenLayer(1, inputs, weights, biases, training)
 
     for layerNum in xrange(numHiddenLayers+1):
         if layerNum > 1:
-            previousLayer = hiddenLayer
-            hiddenLayer = tf.nn.relu(tf.matmul(previousLayer, weights['h' + str(layerNum)]) + biases['h' + str(layerNum)])
+            hiddenLayer = generateHiddenLayer(layerNum, hiddenLayer, weights, biases, training)
 
-    outputLayer = tf.matmul(hiddenLayer, weights['out']) + biases['out']
-    return outputLayer
+    return tf.matmul(hiddenLayer, weights['out']) + biases['out']
 
 def reformat(dataset, labels):
     dataset = dataset.reshape((-1, _imageSize * _imageSize)).astype(np.float32)
@@ -43,26 +51,35 @@ def reformat(dataset, labels):
     labels = (np.arange(_numLabels) == labels[:, None]).astype(np.float32)
     return dataset, labels
 
-def generateWeights(numHiddenLayers, numHiddenFeatures, numInputs, numLabels):
+
+def generateWeights(hiddenLayers, numInputs, numLabels):
+    numHiddenLayers = hiddenLayers.__len__()
     validateNumHiddenLayers(numHiddenLayers)
     weights = {}
-    weights['h1'] = tf.Variable(tf.truncated_normal([numInputs, numHiddenFeatures]))
+
+    numHiddenFeatures = hiddenLayers[0]
+    weights[generateHiddenLayerKey(1)] = tf.Variable(tf.truncated_normal([numInputs, numHiddenFeatures]))
 
     for layerNum in xrange(numHiddenLayers+1):
         if layerNum > 1:
-            weights['h' + str(layerNum)] = tf.Variable(tf.truncated_normal([numHiddenFeatures, numHiddenFeatures]))
+            numHiddenFeatures = hiddenLayers[layerNum-1]
+            weights[generateHiddenLayerKey(layerNum)] = tf.Variable(tf.truncated_normal([numHiddenFeatures, numHiddenFeatures]))
 
     weights['out'] = tf.Variable(tf.truncated_normal([numHiddenFeatures, numLabels]))
     return weights
 
-def generateBiases(numHiddenLayers, numHiddenFeatures, numLabels):
+def generateBiases(hiddenLayers,  numLabels):
+    numHiddenLayers = hiddenLayers.__len__()
     validateNumHiddenLayers(numHiddenLayers)
     biases = {}
-    biases['h1'] = tf.Variable(tf.zeros([numHiddenFeatures]))
+
+    numHiddenFeatures = hiddenLayers[0]
+    biases[generateHiddenLayerKey(1)] = tf.Variable(tf.zeros([numHiddenFeatures]))
 
     for layerNum in xrange(numHiddenLayers+1):
         if layerNum > 1:
-            biases['h' + str(layerNum)] = tf.Variable(tf.zeros([numHiddenFeatures]))
+            numHiddenFeatures = hiddenLayers[layerNum-1]
+            biases[generateHiddenLayerKey(layerNum)] = tf.Variable(tf.zeros([numHiddenFeatures]))
 
     biases['out'] = tf.Variable(tf.zeros([numLabels]))
     return biases
@@ -117,15 +134,16 @@ with graph.as_default():
     tf_valid_dataset = tf.constant(valid_dataset)
     tf_test_dataset = tf.constant(test_dataset)
 
-    weights = generateWeights(_numHiddenLayers, _numHiddenFeatures, _numInputs, _numLabels)
-    biases = generateBiases(_numHiddenLayers, _numHiddenFeatures, _numLabels)
-    trainingNetwork = multilayerNetwork(tf_train_dataset, weights, biases, _numHiddenLayers)
-    loss = generateLossCalc(weights, biases, _numHiddenLayers, trainingNetwork, tf_train_labels, _regularizationRate)
+    numHiddenLayers = _hiddenLayers.__len__()
+    weights = generateWeights(_hiddenLayers, _numInputs, _numLabels)
+    biases = generateBiases(_hiddenLayers, _numLabels)
+    trainingNetwork = multilayerNetwork(tf_train_dataset, weights, biases, numHiddenLayers, True)
+    loss = generateLossCalc(weights, biases, numHiddenLayers, trainingNetwork, tf_train_labels, _regularizationRate)
     optimizer = tf.train.GradientDescentOptimizer(_learningRate).minimize(loss)
 
     train_prediction = tf.nn.softmax(trainingNetwork)
-    valid_prediction = tf.nn.softmax(multilayerNetwork(tf_valid_dataset, weights, biases, _numHiddenLayers))
-    test_prediction = tf.nn.softmax(multilayerNetwork(tf_test_dataset, weights, biases, _numHiddenLayers))
+    valid_prediction = tf.nn.softmax(multilayerNetwork(tf_valid_dataset, weights, biases, numHiddenLayers, False))
+    test_prediction = tf.nn.softmax(multilayerNetwork(tf_test_dataset, weights, biases, numHiddenLayers, False))
 
 with tf.Session(graph=graph) as session:
     tf.initialize_all_variables().run()
