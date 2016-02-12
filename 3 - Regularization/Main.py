@@ -1,6 +1,21 @@
-#Best score so far:  93.3%
+#Best score so far:  96.4%, on:
+
+#_imageSize = 28
+#_numLabels = 10
+#_trainSubset = 10000
+#_batchSize = 128
+#_hiddenLayers = [1024,512]
+#_numInputs = _imageSize * _imageSize
+#_startLearningRate = 0.5
+#_learningDecayRate = 0.98
+#_decaySteps = 1000
+#_numSteps = 100001
+#_regularizationRate = 0.00001
+#_dropoutKeepRate = 0.5
 
 import cPickle as pickle
+from numpy.ma import sqrt
+
 import numpy as np
 import tensorflow as tf
 
@@ -10,12 +25,14 @@ _imageSize = 28
 _numLabels = 10
 _trainSubset = 10000
 _batchSize = 128
-_hiddenLayers = [2048]
+_hiddenLayers = [1024,512]
 _numInputs = _imageSize * _imageSize
-_learningRate = 0.04
-_numSteps = 10000
-_regularizationRate = 0.005
-_dropoutKeepRate = 1
+_startLearningRate = 0.5
+_learningDecayRate = 0.99
+_decaySteps = 1000
+_numSteps = 200001
+_regularizationRate = 0.00001
+_dropoutKeepRate = 0.5
 
 def accuracy(predictions, labels):
     return (100.0 * np.sum(np.argmax(predictions, 1) == np.argmax(labels, 1))/predictions.shape[0])
@@ -27,25 +44,25 @@ def validateNumHiddenLayers(numHiddenLayers):
 def generateHiddenLayerKey(layerNum):
     return 'h' + str(layerNum)
 
-def generateHiddenLayer(layerNum, previousLayer, weights, biases, training):
+def generateHiddenLayer(layerNum, previousLayer, weights, biases, training, dropoutKeepRate):
     key = generateHiddenLayerKey(layerNum)
     if training:
-        hiddenLayer = tf.nn.dropout(previousLayer, _dropoutKeepRate)
-        hiddenLayer = tf.nn.relu(tf.matmul(hiddenLayer, weights[key]) + biases[key])
+        hiddenLayer = tf.nn.relu(tf.matmul(previousLayer, weights[key]) + biases[key])
+        hiddenLayer = tf.nn.dropout(hiddenLayer, dropoutKeepRate)
         return hiddenLayer
     else:
         hiddenLayer = tf.nn.relu(tf.matmul(previousLayer, weights[key]) + biases[key])
         return hiddenLayer
 
 
-def multilayerNetwork(inputs, weights, biases, numHiddenLayers, training):
+def multilayerNetwork(inputs, weights, biases, numHiddenLayers, training, dropoutKeepRate):
     validateNumHiddenLayers(numHiddenLayers)
 
-    hiddenLayer = generateHiddenLayer(1, inputs, weights, biases, training)
+    hiddenLayer = generateHiddenLayer(1, inputs, weights, biases, training, dropoutKeepRate)
 
     for layerNum in xrange(numHiddenLayers+1):
         if layerNum > 1:
-            hiddenLayer = generateHiddenLayer(layerNum, hiddenLayer, weights, biases, training)
+            hiddenLayer = generateHiddenLayer(layerNum, hiddenLayer, weights, biases, training, dropoutKeepRate)
 
     return tf.matmul(hiddenLayer, weights['out']) + biases['out']
 
@@ -55,6 +72,9 @@ def reformat(dataset, labels):
     labels = (np.arange(_numLabels) == labels[:, None]).astype(np.float32)
     return dataset, labels
 
+#source:  http://arxiv.org/pdf/1502.01852v1.pdf
+def calculateOptimalWeightStdDev(numPreviousLayerParams):
+    return sqrt(2.0/numPreviousLayerParams)
 
 def generateWeights(hiddenLayers, numInputs, numLabels):
     numHiddenLayers = hiddenLayers.__len__()
@@ -62,15 +82,18 @@ def generateWeights(hiddenLayers, numInputs, numLabels):
     weights = {}
 
     numHiddenFeatures = hiddenLayers[0]
-    weights[generateHiddenLayerKey(1)] = tf.Variable(tf.truncated_normal([numInputs, numHiddenFeatures]))
+    stddev = calculateOptimalWeightStdDev(numInputs)
+    weights[generateHiddenLayerKey(1)] = tf.Variable(tf.truncated_normal([numInputs, numHiddenFeatures], 0, stddev))
 
     for layerNum in xrange(numHiddenLayers+1):
         if layerNum > 1:
             previousNumHiddenFeatures = numHiddenFeatures
             numHiddenFeatures = hiddenLayers[layerNum-1]
-            weights[generateHiddenLayerKey(layerNum)] = tf.Variable(tf.truncated_normal([previousNumHiddenFeatures, numHiddenFeatures]))
+            stddev = calculateOptimalWeightStdDev(numHiddenFeatures)
+            weights[generateHiddenLayerKey(layerNum)] = tf.Variable(tf.truncated_normal([previousNumHiddenFeatures, numHiddenFeatures], 0, stddev))
 
-    weights['out'] = tf.Variable(tf.truncated_normal([numHiddenFeatures, numLabels]))
+    stddev = calculateOptimalWeightStdDev(numHiddenFeatures)
+    weights['out'] = tf.Variable(tf.truncated_normal([numHiddenFeatures, numLabels], 0, stddev))
     return weights
 
 def generateBiases(hiddenLayers,  numLabels):
@@ -142,13 +165,15 @@ with graph.as_default():
     numHiddenLayers = _hiddenLayers.__len__()
     weights = generateWeights(_hiddenLayers, _numInputs, _numLabels)
     biases = generateBiases(_hiddenLayers, _numLabels)
-    trainingNetwork = multilayerNetwork(tf_train_dataset, weights, biases, numHiddenLayers, True)
+    trainingNetwork = multilayerNetwork(tf_train_dataset, weights, biases, numHiddenLayers, True, _dropoutKeepRate)
     loss = generateLossCalc(weights, biases, numHiddenLayers, trainingNetwork, tf_train_labels, _regularizationRate)
-    optimizer = tf.train.GradientDescentOptimizer(_learningRate).minimize(loss)
+    global_step = tf.Variable(0)  # count the number of steps taken.
+    learning_rate = tf.train.exponential_decay(_startLearningRate, global_step, _decaySteps, _learningDecayRate)
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss, global_step=global_step)
 
-    train_prediction = tf.nn.softmax(trainingNetwork)
-    valid_prediction = tf.nn.softmax(multilayerNetwork(tf_valid_dataset, weights, biases, numHiddenLayers, False))
-    test_prediction = tf.nn.softmax(multilayerNetwork(tf_test_dataset, weights, biases, numHiddenLayers, False))
+    train_prediction = tf.nn.softmax(multilayerNetwork(tf_train_dataset, weights, biases, numHiddenLayers, False, _dropoutKeepRate))
+    valid_prediction = tf.nn.softmax(multilayerNetwork(tf_valid_dataset, weights, biases, numHiddenLayers, False, _dropoutKeepRate))
+    test_prediction = tf.nn.softmax(multilayerNetwork(tf_test_dataset, weights, biases, numHiddenLayers, False, _dropoutKeepRate))
 
 with tf.Session(graph=graph) as session:
     tf.initialize_all_variables().run()
