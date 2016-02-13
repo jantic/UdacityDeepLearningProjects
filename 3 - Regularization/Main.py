@@ -1,10 +1,10 @@
-#Best score so far:  96.4%, on:
+#Best score so far:  96.6%, on:
 
 #_imageSize = 28
 #_numLabels = 10
 #_trainSubset = 10000
 #_batchSize = 128
-#_hiddenLayers = [1024,512]
+#_hiddenLayers = [2048,512]
 #_numInputs = _imageSize * _imageSize
 #_startLearningRate = 0.5
 #_learningDecayRate = 0.98
@@ -25,14 +25,15 @@ _imageSize = 28
 _numLabels = 10
 _trainSubset = 10000
 _batchSize = 128
-_hiddenLayers = [1024,512]
+_hiddenLayers = [2048,512]
 _numInputs = _imageSize * _imageSize
 _startLearningRate = 0.5
-_learningDecayRate = 0.99
+_learningDecayRate = 0.98
 _decaySteps = 1000
-_numSteps = 200001
+_numSteps = 100001
 _regularizationRate = 0.00001
 _dropoutKeepRate = 0.5
+
 
 def accuracy(predictions, labels):
     return (100.0 * np.sum(np.argmax(predictions, 1) == np.argmax(labels, 1))/predictions.shape[0])
