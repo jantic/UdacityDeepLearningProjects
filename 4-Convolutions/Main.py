@@ -72,21 +72,24 @@ with graph.as_default():
     layer2_weights = tf.Variable(tf.truncated_normal(
       [_patchSize, _patchSize, _depth, _depth], stddev=0.1))
     layer2_biases = tf.Variable(tf.constant(1.0, shape=[_depth]))
+    layer3InputSize = _imageSize // 4 * _imageSize // 4 * _depth
     layer3_weights = tf.Variable(tf.truncated_normal(
-      [_imageSize // 4 * _imageSize // 4 * _depth, _numHidden], stddev=0.1))
+            [layer3InputSize, _numHidden], stddev=0.1))
     layer3_biases = tf.Variable(tf.constant(1.0, shape=[_numHidden]))
     layer4_weights = tf.Variable(tf.truncated_normal(
-      [_numHidden, _numLabels], stddev=0.1))
+      [_numHidden, _numLabels], stddev=calculateOptimalWeightStdDev(_numHidden)))
     layer4_biases = tf.Variable(tf.constant(1.0, shape=[_numLabels]))
 
   # Model.
     def model(data):
-        conv = tf.nn.conv2d(data, layer1_weights, [1, 2, 2, 1], padding='SAME')
+        conv = tf.nn.conv2d(data, layer1_weights, [1, 1, 1, 1], padding='SAME')
         hidden = tf.nn.relu(conv + layer1_biases)
-        conv = tf.nn.conv2d(hidden, layer2_weights, [1, 2, 2, 1], padding='SAME')
+        pooled = tf.nn.max_pool(hidden,[1, 2, 2, 1],[1, 2, 2, 1],padding='SAME')
+        conv = tf.nn.conv2d(pooled, layer2_weights, [1, 1, 1, 1], padding='SAME')
         hidden = tf.nn.relu(conv + layer2_biases)
-        shape = hidden.get_shape().as_list()
-        reshape = tf.reshape(hidden, [shape[0], shape[1] * shape[2] * shape[3]])
+        pooled = tf.nn.max_pool(hidden,[1, 2, 2, 1],[1, 2, 2, 1],padding='SAME')
+        shape = pooled.get_shape().as_list()
+        reshape = tf.reshape(pooled, [shape[0], shape[1] * shape[2] * shape[3]])
         hidden = tf.nn.relu(tf.matmul(reshape, layer3_weights) + layer3_biases)
         return tf.matmul(hidden, layer4_weights) + layer4_biases
 
