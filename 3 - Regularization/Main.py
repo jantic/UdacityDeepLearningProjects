@@ -90,7 +90,7 @@ def generateWeights(hiddenLayers, numInputs, numLabels):
         if layerNum > 1:
             previousNumHiddenFeatures = numHiddenFeatures
             numHiddenFeatures = hiddenLayers[layerNum-1]
-            stddev = calculateOptimalWeightStdDev(numHiddenFeatures)
+            stddev = calculateOptimalWeightStdDev(previousNumHiddenFeatures)
             weights[generateHiddenLayerKey(layerNum)] = tf.Variable(tf.truncated_normal([previousNumHiddenFeatures, numHiddenFeatures], 0, stddev))
 
     stddev = calculateOptimalWeightStdDev(numHiddenFeatures)
